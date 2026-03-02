@@ -75,10 +75,59 @@ impl Molecule {
             atom.z += dz;
         }
     }
+
+    pub fn rotate(mut self, alpha: f64, beta: f64, gamma: f64) -> Self {
+        let (center_x, center_y, center_z) = self.center_of_mass();
+        for atom in &mut self.0 {
+            atom.x -= center_x;
+            atom.y -= center_y;
+            atom.z -= center_z;
+        }
+        for atom in &mut self.0 {
+            let x = atom.x;
+            let y = atom.y;
+            let z = atom.z;
+            let new_x = x * alpha.cos() * beta.cos()
+                + y * (-alpha.sin() * gamma.cos() + alpha.cos() * beta.sin() * gamma.sin())
+                + z * (alpha.sin() * gamma.sin() + alpha.cos() * beta.sin() * gamma.cos());
+            let new_y = x * alpha.sin() * beta.cos()
+                + y * (alpha.cos() * gamma.cos() + alpha.sin() * beta.sin() * gamma.sin())
+                + z * (-alpha.cos() * gamma.sin() + alpha.sin() * beta.sin() * gamma.cos());
+            let new_z =
+                -x * beta.sin() + y * beta.cos() * gamma.sin() + z * beta.cos() * gamma.cos();
+            atom.x = new_x;
+            atom.y = new_y;
+            atom.z = new_z;
+        }
+        for atom in &mut self.0 {
+            atom.x += center_x;
+            atom.y += center_y;
+            atom.z += center_z;
+        }
+        self
+    }
+
+    pub fn displace(mut self, dx: f64, dy: f64, dz: f64) -> Self {
+        for atom in &mut self.0 {
+            atom.x += dx;
+            atom.y += dy;
+            atom.z += dz;
+        }
+        self
+    }
+
+    pub fn to_pdb_string(&self) -> String {
+        let mut s = String::new();
+        for atom in &self.0 {
+            s.push_str(&atom.to_pdb_string());
+        }
+        s.push_str("END\n");
+        s
+    }
 }
 
 impl Atom {
-    fn new() -> Atom {
+    pub fn new() -> Atom {
         Atom {
             serial: 0,
             name: String::new(),
@@ -100,6 +149,25 @@ impl Atom {
             eps_1_4: 0.0,
             rmin2_1_4: 0.0,
         }
+    }
+
+    pub fn to_pdb_string(&self) -> String {
+        format!(
+            "ATOM  {:>5} {:^4}{:>1}{:3} {:>1}{:>4}{:>1}   {:>8.3}{:>8.3}{:>8.3}{:>6.2}{:>6.2}          {:>2}\n",
+            self.serial,
+            self.name,
+            self.altloc,
+            self.resname,
+            self.chainid,
+            self.resseq,
+            self.icode,
+            self.x,
+            self.y,
+            self.z,
+            self.occupancy,
+            self.tempfactor,
+            self.element
+        )
     }
 }
 
@@ -195,6 +263,17 @@ pub fn read_pdb_from_str(content: &str) -> Model {
 pub fn read_pdb(pdb_file: &str) -> Model {
     let file = File::open(pdb_file).expect("Cannot open file");
     parse_lines(BufReader::new(file).lines().map_while(Result::ok))
+}
+
+pub fn combine_molecules(receptor: &Molecule, ligand: &Molecule) -> Molecule {
+    let mut combined = Molecule::new();
+    for atom in &receptor.0 {
+        combined.0.push(atom.clone());
+    }
+    for atom in &ligand.0 {
+        combined.0.push(atom.clone());
+    }
+    combined
 }
 
 pub fn distance(atom1: &Atom, atom2: &Atom) -> f64 {
