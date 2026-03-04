@@ -4,19 +4,27 @@ version = "0.2.0"
 edition = "2021"
 license = "0BSD"
 authors = ["Rodrigo V. Honorato <rvhonorato@protonmail.com>"]
-description = "WebAssembly bindings for gdock score pipeline"
+description = "WebAssembly bindings for the gdock protein–protein docking engine"
+repository = "https://github.com/haddocking/gdock-wasm"
+homepage = "https://gdock.org"
+readme = "README.md"
+keywords = ["docking", "bioinformatics", "wasm", "webassembly", "protein"]
+categories = ["science", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = ["console_error_panic_hook"]
+
 [dependencies]
+gdock = { version = "2.0.0", default-features = false }
 wasm-bindgen = "0.2"
 js-sys = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = { version = "0.1", optional = true }
-rand = { version = "0.8.5", features = ["std"] }
-rand_distr = "0.4"
+rand = { version = "0.8", features = ["std"] }
 getrandom = { version = "0.2", features = ["js"] }
 serde_json = "1"
 
