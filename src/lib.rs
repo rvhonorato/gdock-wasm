@@ -1,4 +1,5 @@
 use gdock::chromosome;
+use gdock::clustering;
 use gdock::constants;
 use gdock::fitness;
 use gdock::population;
@@ -184,6 +185,127 @@ pub fn run_docking(
         clustered_poses,
         ranked_poses,
     };
+
+    serde_wasm_bindgen::to_value(&output).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClusterOutput {
+    center_idx: usize,
+    members: Vec<usize>,
+    size: usize,
+}
+
+/// Compute inter-chain FCC contacts for a receptor + ligand complex.
+///
+/// Returns a JS array of contact strings ("chainA resA chainB resB").
+/// Call this once per model while iterating over the ensemble.
+#[wasm_bindgen]
+pub fn compute_contacts(receptor_pdb: &str, ligand_pdb: &str) -> Result<JsValue, JsValue> {
+    let receptor = structure::read_pdb_from_str(receptor_pdb)
+        .0
+        .into_iter()
+        .next()
+        .ok_or_else(|| JsValue::from_str("Receptor PDB contains no atoms"))?;
+    let ligand = structure::read_pdb_from_str(ligand_pdb)
+        .0
+        .into_iter()
+        .next()
+        .ok_or_else(|| JsValue::from_str("Ligand PDB contains no atoms"))?;
+
+    let complex = structure::combine_molecules(&receptor, &ligand);
+    let mut contacts: Vec<String> = clustering::calculate_contacts(&complex, 5.0)
+        .into_iter()
+        .collect();
+    contacts.sort();
+
+    serde_wasm_bindgen::to_value(&contacts).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Cluster structures from pre-computed contact sets using FCC.
+///
+/// `contacts_json` — JSON array of arrays of contact strings, one inner array
+/// per model (as returned by repeated calls to `compute_contacts`).
+///
+/// Returns an array of cluster objects `{ centerIdx, members, size }` sorted
+/// by cluster size descending. Only clusters with `size >= min_cluster_size`
+/// are included.
+#[wasm_bindgen]
+pub fn cluster_from_contacts(
+    contacts_json: &str,
+    fcc_cutoff: Option<f64>,
+    min_cluster_size: Option<usize>,
+) -> Result<JsValue, JsValue> {
+    use std::collections::HashSet;
+
+    let raw: Vec<Vec<String>> = serde_json::from_str(contacts_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid JSON: {}", e)))?;
+
+    let contact_sets: Vec<HashSet<String>> =
+        raw.into_iter().map(|v| v.into_iter().collect()).collect();
+
+    let n = contact_sets.len();
+    let cutoff = fcc_cutoff.unwrap_or(0.60);
+    let strictness = 0.75_f64;
+    let min_size = min_cluster_size.unwrap_or(4);
+
+    // Build FCC neighbor graph (O(n²))
+    let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let xi = &contact_sets[i];
+            let xj = &contact_sets[j];
+            if xi.is_empty() || xj.is_empty() {
+                continue;
+            }
+            let common = xi.intersection(xj).count() as f64;
+            let fcc = common / xi.len() as f64;
+            let fcc_v = common / xj.len() as f64;
+            if fcc >= cutoff && fcc_v >= cutoff * strictness {
+                neighbors[i].insert(j);
+            }
+            if fcc_v >= cutoff && fcc >= cutoff * strictness {
+                neighbors[j].insert(i);
+            }
+        }
+    }
+
+    // Greedy clustering (mirrors cluster_elements in gdock::clustering)
+    let mut used: HashSet<usize> = HashSet::new();
+    let mut clusters: Vec<ClusterOutput> = Vec::new();
+
+    loop {
+        let center = (0..n).filter(|k| !used.contains(k)).max_by(|&a, &b| {
+            let ca = neighbors[a].iter().filter(|x| !used.contains(x)).count();
+            let cb = neighbors[b].iter().filter(|x| !used.contains(x)).count();
+            ca.cmp(&cb).then_with(|| b.cmp(&a)) // tie-break: larger index wins
+        });
+
+        let Some(center) = center else { break };
+
+        let mut members: Vec<usize> = vec![center];
+        for &nb in &neighbors[center] {
+            if !used.contains(&nb) && nb != center {
+                members.push(nb);
+                used.insert(nb);
+            }
+        }
+        used.insert(center);
+        members.sort();
+
+        clusters.push(ClusterOutput {
+            center_idx: center,
+            size: members.len(),
+            members,
+        });
+    }
+
+    clusters.sort_by(|a, b| b.size.cmp(&a.size));
+    let output: Vec<ClusterOutput> = clusters
+        .into_iter()
+        .filter(|c| c.size >= min_size)
+        .collect();
 
     serde_wasm_bindgen::to_value(&output).map_err(|e| JsValue::from_str(&e.to_string()))
 }
