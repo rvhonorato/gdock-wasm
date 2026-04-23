@@ -14,11 +14,11 @@ Scores a receptor–ligand complex and returns `{ vdw, elec, desolv, total }`.
 
 Runs a full docking GA and returns:
 
-```json
+```jsonc
 {
   "generationsRun": 100,
-  "clusteredPoses": [{ "rank": 1, "fitness": -42.0, "vdw": ..., "ligandPdb": "..." }],
-  "rankedPoses":    [{ "rank": 1, "fitness": -42.0, "vdw": ..., "ligandPdb": "..." }]
+  "clusteredPoses": [{ "rank": 1, "fitness": -42.0, "vdw": "...", "ligandPdb": "..." }],
+  "rankedPoses":    [{ "rank": 1, "fitness": -42.0, "vdw": "...", "ligandPdb": "..." }]
 }
 ```
 
