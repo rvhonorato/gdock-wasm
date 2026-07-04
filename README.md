@@ -4,6 +4,10 @@ WebAssembly bindings for [gdock](https://crates.io/crates/gdock), a genetic-algo
 
 Runs entirely in the browser — no server required.
 
+> **The main source repository has moved to
+> [Codeberg](https://codeberg.org/rvhonorato/gdock-wasm).** GitHub remains
+> available as a mirror; please open issues and pull requests on Codeberg.
+
 ## Exposed API
 
 ### `score_structures(receptor_pdb, ligand_pdb, w_vdw, w_elec, w_desolv)`
